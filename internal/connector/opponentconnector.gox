@@ -1,0 +1,38 @@
+package connector
+
+type OpponentConnector struct {
+    self *Connector
+    opponent *Connector
+}
+
+
+func (oc *OpponentConnector) CreatePair() *OpponentConnector {
+    return &OpponentConnector{
+    	self:     oc.opponent,
+    	opponent: oc.self,
+    }
+}
+
+func (oc *OpponentConnector) sendMsg(m Msg){
+    oc.opponent.SendMsg(m)
+}
+
+func (oc *OpponentConnector) RecieveMsg() (Msg, bool)  {
+    return oc.self.GetMsg()
+}
+
+func (oc *OpponentConnector) Close()  {
+    oc.self.Close()
+    oc.opponent.Close()
+}
+
+func NewOpponentConnector() *OpponentConnector{
+    return &OpponentConnector{
+    	self: &Connector{
+    		Channel: make(chan Msg),
+    	},
+    	opponent:  &Connector{
+    		Channel: make(chan Msg),
+    	},
+    }
+}
