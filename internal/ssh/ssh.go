@@ -3,6 +3,7 @@ package ssh
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"net"
 	"os"
 	"os/signal"
@@ -45,50 +46,44 @@ func CreateGame(user string) {
 	log.Info(user, "user ready...", Users)
 }
 
-func ExitGame(user string) {
-	// if game is in progress
-	if Users[user].Opponent != "" {
-		// send opponent the opponent abort msg
-		Users[Users[user].Opponent].connection.SendMsg("abort", nil)
-		// opponent.Opponet = nil
-		// close opponent channel
-	}
-	// close server channel
-	Users[user].connection.Close()
-	// remove user from Users list
-	delete(Users, user)
-	//
-}
 
-func JoinGame(user string, opponent string) {
+func JoinGame(user string, opponent string) error {
 	//if  not in ready return error
-	if Users[user].stage != "initial" {
-		Users[user].connection.SendMsg("error", "You are not allow your stage should be Inital")
-		return
+	if Users[user].stage != "lobby" {
+		return errors.New("You are not allow your stage should be Inital")
 	}
 	if Users[opponent].stage != "ready" {
-		Users[user].connection.SendMsg("error", "Opponent is no longer avaiable ..(maybe be entered a different game or went offline)")
-		return
+		return errors.New("Opponent is no longer avaiable ..(maybe be entered a different game or went offline)")
 	}
 
-	//NOTE: opponent pair connector are created and one is given to user and one is given to opponent
-	usrconn := connector.NewConnector()
-	oppconn := connector.CreateConnectorPair(usrconn)
+	//TODO: Ask user for confirmation
+	// first way: create a channel and send request to the opponent so when opponent want to say yes just pass yes in that channel
+	// second way: create a request pool when request is send and a reference of that request in the pool and wait when the opponent sends ok in the gofunc lister complete the request from the pool and resume the execution
 
-	//send the message to the opponent that this user wants to connect with channel
-	Users[opponent].connection.SendMsg("join", map[string]interface{}{"name": user, "connector": oppconn})
-	//if the opponent accepts(ok) send the user the ok
-	Users[user].connection.SendMsg("connect", usrconn)
-	//BUG: rewrite this
-	//add user to opponent.Opponent
-	//add oppenent to user.Opponent
-	u := Users[opponent]
-	u.Opponent = user
-	Users[opponent] = u
+	//send opponent join message with name of user
+	Users[opponent].connection.SendMsg("join", user)
 
-	u = Users[user]
+	u := Users[user]
 	u.Opponent = opponent
-	Users[opponent] = u
+	u.stage = "ingame"
+	Users[user] = u
+
+	o := Users[opponent]
+	o.Opponent = user
+	o.stage = "ingame"
+	Users[user] = o
+
+	// randomly decide who is going first
+	if rand.Intn(2) == 0 {
+        log.Info("opponent is first")
+		Users[user].connection.SendMsg("first", false)
+		Users[opponent].connection.SendMsg("first", true)
+	} else {
+        log.Info("user is first")
+		Users[user].connection.SendMsg("first", true)
+		Users[opponent].connection.SendMsg("first", false)
+	}
+	return nil
 }
 
 func ListGames(user string) {
@@ -101,6 +96,34 @@ func ListGames(user string) {
 	Users[user].connection.SendMsg("list", data)
 }
 
+func ExitGame(user string) {
+    userConn := Users[user].connection
+    if userConn != nil {
+        userConn.Close()
+    }
+    // if game is in progress
+    if Users[user].Opponent != "" {
+        // send opponent the opponent abort msg
+        Users[Users[user].Opponent].connection.SendMsg("abort", nil)
+        // send opponent to the lobby
+        o := Users[Users[user].Opponent]
+        o.Opponent = ""
+        o.stage = "lobby"
+        Users[Users[user].Opponent] = o
+    }
+    // remove user from Users list
+    delete(Users, user)
+    log.Info("User removed", "user", user, "Users", Users)
+}
+func Move(user string, move [2]int) error {
+	opponentStr := Users[user].Opponent
+	if opponentStr == "" {
+		return errors.New("No opponent found !!!")
+	}
+	Users[opponentStr].connection.SendMsg("move", move)
+	return nil
+}
+
 func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 	//generate random blob
 	blob := s.Context().SessionID()
@@ -111,31 +134,35 @@ func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 	cpair := connector.CreateConnectorPair(c)
 	Users[user] = User{
 		connection: c,
-		stage:      "initial",
+		stage:      "lobby",
 	}
 	go func() {
 		for {
-			log.Info("Loopping ...")
 			clientMsg, more := Users[user].connection.GetMsg()
 			if more == false {
-				log.Info("Channel closed", user)
+				log.Info("Channel closed stopping go routing", "user", user)
 				return
 			}
 			switch clientMsg.Name {
+			//TODO: add error handling if the function return any error forward that to client
 			case "create":
-				log.Info("Creating game for ", user)
+				log.Info("Creating game for ", "user", user)
 				CreateGame(user)
 			case "list":
-				log.Info("Listing avaiable games for", user)
+				log.Info("Listing avaiable games for", "user", user)
 				ListGames(user)
 			case "join":
 				opponent := clientMsg.Data.(string)
+				//ask apponent for confirmation
 				log.Info("joining ...", "User", opponent, "User ", user)
 				JoinGame(user, opponent)
+			case "move":
+				move := clientMsg.Data.([2]int)
+				log.Info("Moved", "user", user, "move", move)
+				Move(user, move)
 			case "exit":
 				log.Info("Exiting ... ", "User ", user)
-				ExitGame(user)
-				break
+                break
 			}
 		}
 	}()
@@ -154,7 +181,7 @@ func StartServer() {
 			return func(s ssh.Session) {
 				next(s)
 				user := s.User() + s.Context().SessionID()[:5]
-				log.Info("User disconnected", "user", user, "Exiting from Game")
+				log.Info("User disconnected", "user", user)
 				ExitGame(user)
 			}
 		},
@@ -175,8 +202,6 @@ func StartServer() {
 	}()
 
 	<-done
-
-	//close the channels in users
 	log.Info("Stopping SSH server")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer func() { cancel() }()

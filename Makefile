@@ -4,9 +4,5 @@ setup:
 build:
 	go build -o bin/main cmd/main.go
 
-brun:
-	go build -o bin/main cmd/main.go
-	./bin/main
-
-run:
-	go run cmd/main.go
+run: build
+	./bin/main	
