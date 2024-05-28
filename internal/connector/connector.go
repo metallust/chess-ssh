@@ -25,8 +25,11 @@ func CreateConnectorPair(c *Connector) *Connector {
     }
 }
 
-func (c *Connector) SendMsg(msg Msg) {
-    c.Sender <- msg
+func (c *Connector) SendMsg(msg string, data interface{}) {
+    c.Sender <- Msg{
+        Name: msg,
+        Data: data,
+    }
 }
 
 func (c *Connector) GetMsg() (Msg, bool) {

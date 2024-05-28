@@ -87,18 +87,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msgString {
 			case "n", "N":
 				m.Page = 4
-				m.Connector.SendMsg(
-					connector.Msg{
-						Name: "create",
-						Data: nil,
-					},
-				)
+				m.Connector.SendMsg("create", nil)
 			case "o", "O":
 				m.Page = 4
-				m.Connector.SendMsg(connector.Msg{
-					Name: "list",
-					Data: nil,
-				})
+				m.Connector.SendMsg("list", nil)
 			}
 			// commands for the game
 		} else if m.Page == 2 {
@@ -114,7 +106,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Game.Cursor[1] = (m.Game.Cursor[1] + 1) % 3
 			case " ", "enter":
 				if m.Game.Board[m.Game.Cursor[0]][m.Game.Cursor[1]] == " " && m.Game.CurrentPlayer == m.Game.Player {
-					m.OpponentConn.SendMsg(connector.Msg{Name: "move", Data: m.Game.Cursor})
+					m.OpponentConn.SendMsg("move", m.Game.Cursor)
 					m.Game.Board[m.Game.Cursor[0]][m.Game.Cursor[1]] = m.Game.Player
 
 					if m.Game.Player == "X" {
@@ -151,10 +143,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// }
 
 				opponent := m.JoinPage.AvaibleGames[m.JoinPage.Cursor]
-				m.Connector.SendMsg(connector.Msg{
-					Name: "join",
-					Data: opponent,
-				})
+				m.Connector.SendMsg("join", opponent)
 				m.Opponent = opponent
 				m.OpponentStatus = "Requested to join ...."
 				m.Page = 2
@@ -178,7 +167,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			//TODO: confirmation Page if yes send hello message else send sorry
 
 			//1. send a hello
-			m.OpponentConn.SendMsg(connector.Msg{Name: "hello"})
+			m.OpponentConn.SendMsg("hello", nil)
 			oppmsg, _ := m.OpponentConn.GetMsg()
 			//2. wait for hello
 			if oppmsg.Name == "hello" {
@@ -186,7 +175,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Page = 2
 			}
 			//3. send first?
-			m.OpponentConn.SendMsg(connector.Msg{Name: "first?"})
+			m.OpponentConn.SendMsg("first?", nil)
 			//4. if yes game.player = O
 			oppmsg, _ = m.OpponentConn.GetMsg()
 			if oppmsg.Name == "yes" {
@@ -206,7 +195,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, ListentoServer(m)
 			}
 			//2. send hello
-			m.OpponentConn.SendMsg(connector.Msg{Name: "hello"})
+			m.OpponentConn.SendMsg("hello", nil)
 			m.Page = 2
 			m.OpponentStatus = "Connected"
 
@@ -218,10 +207,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			//3. send random() yes/no yes game.player = X for tictactoe
 			if rand.Intn(2) == 1 {
-				m.OpponentConn.SendMsg(connector.Msg{Name: "yes"})
+				m.OpponentConn.SendMsg("yes", nil)
 				m.Game.Player = "X"
 			} else {
-				m.OpponentConn.SendMsg(connector.Msg{Name: "no"})
+				m.OpponentConn.SendMsg("no", nil)
 				m.Game.Player = "O"
 			}
 			return m, tea.Batch(ListentoServer(m), ListentoOpponent(m))
@@ -238,7 +227,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "move":
 			move := msg.Data.([2]int)
 			m.Game.Board[move[0]][move[1]] = m.Game.CurrentPlayer
-            m.Game.CurrentPlayer = m.Game.Player
+			m.Game.CurrentPlayer = m.Game.Player
 			return m, ListentoOpponent(m)
 
 		}

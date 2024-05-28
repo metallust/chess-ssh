@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/wish/activeterm"
 	"github.com/charmbracelet/wish/bubbletea"
 	"github.com/charmbracelet/wish/logging"
+
 	"github.com/metallust/chessh/internal/connector"
 	"github.com/metallust/chessh/internal/tictactoe"
 )
@@ -40,41 +41,33 @@ func CreateGame(user string) {
 	u.stage = "ready"
 	Users[user] = u
 	//send ok
-	Users[user].connection.SendMsg(connector.Msg{Name: "created"})
+	Users[user].connection.SendMsg("created", nil)
 	log.Info(user, "user ready...", Users)
 }
 
 func ExitGame(user string) {
 	// if game is in progress
-	// send opponent the opponent left msg
-	// close opponent channel
+	if Users[user].Opponent != "" {
+		// send opponent the opponent abort msg
+		Users[Users[user].Opponent].connection.SendMsg("abort", nil)
+		// opponent.Opponet = nil
+		// close opponent channel
+	}
 	// close server channel
-	// close opponent channel
-	// remove user from Users list
-	// opponent.Opponet = nil
-
 	Users[user].connection.Close()
+	// remove user from Users list
 	delete(Users, user)
+	//
 }
 
 func JoinGame(user string, opponent string) {
 	//if  not in ready return error
 	if Users[user].stage != "initial" {
-		Users[user].connection.SendMsg(
-			connector.Msg{
-				Name: "error",
-				Data: "You are not allow your stage should be Inital",
-			},
-		)
+		Users[user].connection.SendMsg("error", "You are not allow your stage should be Inital")
 		return
 	}
 	if Users[opponent].stage != "ready" {
-		Users[user].connection.SendMsg(
-			connector.Msg{
-				Name: "error",
-				Data: "Opponent is no longer avaiable ..(maybe be entered a different game or went offline)",
-			},
-		)
+		Users[user].connection.SendMsg("error", "Opponent is no longer avaiable ..(maybe be entered a different game or went offline)")
 		return
 	}
 
@@ -83,22 +76,9 @@ func JoinGame(user string, opponent string) {
 	oppconn := connector.CreateConnectorPair(usrconn)
 
 	//send the message to the opponent that this user wants to connect with channel
-	Users[opponent].connection.SendMsg(
-		connector.Msg{
-			Name: "join",
-			Data: map[string]interface{}{
-				"name":      user,
-				"connector": oppconn,
-			},
-		},
-	)
+	Users[opponent].connection.SendMsg("join", map[string]interface{}{"name": user, "connector": oppconn})
 	//if the opponent accepts(ok) send the user the ok
-	Users[user].connection.SendMsg(
-		connector.Msg{
-			Name: "connect",
-			Data: usrconn,
-		},
-	)
+	Users[user].connection.SendMsg("connect", usrconn)
 	//BUG: rewrite this
 	//add user to opponent.Opponent
 	//add oppenent to user.Opponent
@@ -118,7 +98,7 @@ func ListGames(user string) {
 			data = append(data, k)
 		}
 	}
-	Users[user].connection.SendMsg(connector.Msg{Name: "list", Data: data})
+	Users[user].connection.SendMsg("list", data)
 }
 
 func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
