@@ -110,6 +110,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.JoinPage.Cursor -= 1
 				}
 			case "enter":
+                if len(m.JoinPage.AvaibleGames) == 0 {
+                    return m, nil
+                }
 				opponent := m.JoinPage.AvaibleGames[m.JoinPage.Cursor]
                 //TODO: Loading screen
                 first, err :=  m.gameClient.Join(opponent)
@@ -118,6 +121,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 }
                 m.Page = "game"
                 m.Opponent = opponent
+                m.OpponentStatus = "Connected"
                 if first {
                     m.Game.Player = "X"
                     return m, nil

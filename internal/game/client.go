@@ -27,7 +27,7 @@ func NewGameClient(c *connector.Connector) *GameClient {
 func (gc *GameClient) ListenServer() tea.Cmd {
 	return func() tea.Msg {
 		msg, more := gc.serverconnector.GetMsg()
-        log.Println("Bubble tea game client", msg, more)
+        log.Println("Bubble tea Lister server -->", msg, more)
 		if !more {
 			log.Println("Bubbletea Application: Server disconnected ...")
             return GameClientMsg{Msg: "exit"}
@@ -100,7 +100,7 @@ func (gc *GameClient) Join(opponent string) (bool, error) {
 	log.Println("Bubbletea Application: Joining ...")
 
 	gc.serverconnector.SendMsg("join", opponent)
-	msg, more := gc.serverconnector.GetMsg()
+    msg, more :=  <-gc.serverconnector.Reciever
 	if !more {
 		//add handler to server close connection
 	}
@@ -111,7 +111,6 @@ func (gc *GameClient) Join(opponent string) (bool, error) {
 	if msg.Name != "first" {
 		return false, errors.New("something went wrong: wrong protocol")
 	}
-    log.Println("Bubbletea Application: Joined ...")
 	return msg.Data.(bool), nil
 }
 

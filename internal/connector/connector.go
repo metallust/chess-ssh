@@ -1,6 +1,5 @@
 package connector
 
-
 type Msg struct {
     Name string
     Data interface{}
