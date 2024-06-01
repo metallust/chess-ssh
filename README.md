@@ -15,3 +15,12 @@ SSH will start and to connect to is server
 1. Open a new terminal
 2. ssh -p 23234 localhost
 3. Start 2 instance for testing
+
+
+<!-- Think to learn
+1. Project Structure
+2. Goroutines
+3. Channels
+4. Pointers
+6. Context
+5. Mutex  -->
