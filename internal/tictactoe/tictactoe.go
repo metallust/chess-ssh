@@ -1,24 +1,31 @@
 package tictactoe
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/metallust/chessh/internal/connector"
 	"github.com/metallust/chessh/internal/game"
 )
 
 type Model struct {
-	Page           string
+	Page           int
 	User           string
 	Opponent       string
 	OpponentStatus string
 	JoinPage       joinPage
 	Game           Tictactoe
 	gameClient     *game.GameClient
+	ErrorPage      errorPage
 }
 
 type joinPage struct {
 	Cursor       int
 	AvaibleGames []string
+}
+
+type errorPage struct {
+	errorMsg string
 }
 
 type Tictactoe struct {
@@ -27,6 +34,14 @@ type Tictactoe struct {
 	Player        string
 	CurrentPlayer string
 }
+
+const (
+    MENUPAGE  = iota
+    JOINPAGE = iota
+    GAMEPAGE = iota
+    LOADINGPAGE = iota
+    ERRORPAGE = iota
+)
 
 func InitialModel(User string, c *connector.Connector) tea.Model {
 	m := Model{}
@@ -38,7 +53,7 @@ func InitialModel(User string, c *connector.Connector) tea.Model {
 	m.gameClient = game.NewGameClient(c)
 
 	m.User = User
-	m.Page = "menu"
+	m.Page = MENUPAGE
 	m.Game.CurrentPlayer = "X"
 	m.Opponent = "Waiting ... "
 	return m
@@ -56,20 +71,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if msgString == "m" || msgString == "esc" {
-			m.Page = "menu"
+			m.Page = MENUPAGE
 			return m, nil
 		}
 
-		if m.Page == "menu" {
+		if m.Page == MENUPAGE {
 			switch msgString {
 			case "n", "N":
-				m.Page = "loading"
+				m.Page = LOADINGPAGE
 				return m, m.gameClient.Create("create")
 			case "o", "O":
-				m.Page = "joinpage"
+				m.Page = JOINPAGE
 				return m, m.gameClient.List("list")
 			}
-		} else if m.Page == "joinpage" {
+		} else if m.Page == JOINPAGE {
 			switch msgString {
 			case "up", "k":
 				if m.JoinPage.Cursor < len(m.JoinPage.AvaibleGames)-1 {
@@ -84,12 +99,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				opponent := m.JoinPage.AvaibleGames[m.JoinPage.Cursor]
-				m.Page = "game"
+				m.Page = GAMEPAGE
 				m.Opponent = opponent
 				m.OpponentStatus = "Requesting ..."
 				return m, m.gameClient.Join(opponent, "accepted")
 			}
-		} else if m.Page == "game" {
+		} else if m.Page == GAMEPAGE {
 			switch msgString {
 			case "up", "k":
 				m.Game.Cursor[0] = (m.Game.Cursor[0] + 2) % 3
@@ -112,20 +127,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case game.DoneMsg:
 		switch msg.Msg {
 		case "list":
-			m.Page = "joinpage"
+			m.Page = JOINPAGE
 			m.JoinPage.AvaibleGames = msg.Data.([]string)
 		case "create":
-			m.Page = "game"
+			m.Page = GAMEPAGE
 			m.OpponentStatus = "Waiting ..."
 			return m, m.gameClient.ListenServer()
 		case "accepted":
-			m.Page = "game"
+			m.Page = GAMEPAGE
 			m.OpponentStatus = "Connected"
 			turn := msg.Data.(string)
 			if turn == "first" {
 				m.Game.Player = "X"
 			} else {
 				m.Game.Player = "O"
+                return m, m.gameClient.ListenServer()
 			}
 		case "move":
 			m.Game.Board[m.Game.Cursor[0]][m.Game.Cursor[1]] = m.Game.Player
@@ -135,14 +151,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Game.CurrentPlayer = "X"
 			}
 			return m, m.gameClient.ListenServer()
+		case "error":
+			m.ErrorPage.errorMsg = msg.Data.(string)
+			m.Page = ERRORPAGE
+			return m, doTick("errortimeup")
+        case "errortimeup":
+            m.ErrorPage.errorMsg = ""
+            m.Page = MENUPAGE
 		}
+
 	case game.GameClientMsg:
 		switch msg.Msg {
 		case "join":
 			turn := msg.Data.(map[string]string)["turn"]
 			opponentname := msg.Data.(map[string]string)["opponent"]
 			m.OpponentStatus = "Connected"
-            m.Opponent = opponentname
+			m.Opponent = opponentname
 			if turn == "first" {
 				m.Game.Player = "X"
 			} else {
@@ -153,7 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			move := msg.Data.([2]int)
 			m.Game.Board[move[0]][move[1]] = m.Game.CurrentPlayer
 			m.Game.CurrentPlayer = m.Game.Player
-		case "exit":
+		case "":
 			//exit
 			break
 		}
@@ -165,7 +189,7 @@ func (m Model) View() string {
 	s := "\n\n\t\tTic Tac Toe"
 	switch m.Page {
 	// Page 1 will contain Start screen
-	case "menu":
+	case MENUPAGE:
 		s += "\n\n"
 		s += "\t\tO  Join   Game\n"
 		s += "\t\tN  Create Game\n"
@@ -173,7 +197,7 @@ func (m Model) View() string {
 		s += "\n\n\t\tQ: quit  r:restart\n"
 		return s
 		//Page 2 will content the Game
-	case "game":
+	case GAMEPAGE:
 		s += "\n\nMe: " + m.User + "\n"
 		s += "Opponent : " + m.Opponent + "    [" + m.OpponentStatus + "]\n"
 		for y, row := range m.Game.Board {
@@ -199,13 +223,12 @@ func (m Model) View() string {
 				s += "  "
 			}
 		}
-
 		s += "\nPlayer : " + m.Game.Player
 		s += "\nCurent player : " + m.Game.CurrentPlayer
 		s += "\nQ: quit  r:restart\n"
 		return s
 		//List of page that can be Joined
-	case "joinpage":
+	case JOINPAGE:
 		// s += " - Join Game \n Input Field : " + m.JoinPage.Input + "\n"
 		s += "\n"
 		for i := range m.JoinPage.AvaibleGames {
@@ -218,11 +241,30 @@ func (m Model) View() string {
 		}
 		s += "\n\n\n\nQ Quit\n"
 		return s
-	case "loading":
+
+	case LOADINGPAGE:
 		s += "\n\n\n\n"
 		s += "\t\tLoading ..."
 		s += "\n\n\n\n"
 		s += "\t\tQ Quit\n"
+        return s
+
+	case ERRORPAGE:
+		s += "\n\n\n\n"
+		s += "\t\t" + m.ErrorPage.errorMsg
+		s += "\n\n\n\n"
+		s += "\t\tQ Quit\n"
+        return s
 	}
-	return s
+
+    return s
+}
+
+func doTick(doneMsg string) tea.Cmd {
+	return tea.Tick(time.Millisecond*10, func(t time.Time) tea.Msg {
+		return game.DoneMsg{
+			Msg:  doneMsg,
+			Data: nil,
+		}
+	})
 }
