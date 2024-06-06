@@ -17,6 +17,15 @@ SSH will start and to connect to is server
 3. Start 2 instance for testing
 
 
+## Things to add:
+1. ~~Add mutex for Users[]~~
+2. abort msg handler 
+3. Figure out a better way to log bubble tea app (maybe in a file or on the stdout with log of server)
+4. Add style
+5. add generics
+6. Organize file pagewise
+7. use list bubble tea component in joinpage
+
 <!-- Think to learn
 1. Project Structure
 2. Goroutines
@@ -24,3 +33,7 @@ SSH will start and to connect to is server
 4. Pointers
 6. Context
 5. Mutex  -->
+
+
+
+5 MAY 2024

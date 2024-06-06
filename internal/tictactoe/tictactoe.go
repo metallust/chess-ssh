@@ -36,11 +36,11 @@ type Tictactoe struct {
 }
 
 const (
-    MENUPAGE  = iota
-    JOINPAGE = iota
-    GAMEPAGE = iota
-    LOADINGPAGE = iota
-    ERRORPAGE = iota
+    MENUPAGE int = iota
+    JOINPAGE 
+    GAMEPAGE 
+    LOADINGPAGE 
+    ERRORPAGE 
 )
 
 func InitialModel(User string, c *connector.Connector) tea.Model {
