@@ -2,7 +2,7 @@ setup:
 	go install github.com/cosmtrek/air@latest
 
 build:
-	go build -o bin/main cmd/main.go
+	go build -o bin/chessssh cmd/main.go
 
 run: build
-	./bin/main	
+	./bin/chessssh

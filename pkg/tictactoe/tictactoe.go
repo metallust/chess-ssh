@@ -4,8 +4,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/metallust/chessh/internal/connector"
-	"github.com/metallust/chessh/internal/game"
+	"github.com/metallust/sshGameClient/client"
+	"github.com/metallust/sshGameClient/connector"
 )
 
 type Model struct {
@@ -15,8 +15,10 @@ type Model struct {
 	OpponentStatus string
 	JoinPage       joinPage
 	Game           Tictactoe
-	gameClient     *game.GameClient
+	gameClient     *client.GameClient
 	ErrorPage      errorPage
+    acceptPage     acceptPage
+	quit           bool
 }
 
 type joinPage struct {
@@ -28,6 +30,13 @@ type errorPage struct {
 	errorMsg string
 }
 
+type acceptPage struct {
+    question string
+    answer []string
+    cursor int
+}
+
+
 type Tictactoe struct {
 	Board         [3][3]string
 	Cursor        [2]int
@@ -36,23 +45,24 @@ type Tictactoe struct {
 }
 
 const (
-    MENUPAGE int = iota
-    JOINPAGE 
-    GAMEPAGE 
-    LOADINGPAGE 
-    ERRORPAGE 
+	MENUPAGE int = iota
+	JOINPAGE
+	GAMEPAGE
+	LOADINGPAGE
+	ERRORPAGE
+    ACCEPTPAGE
 )
 
-func InitialModel(User string, c *connector.Connector) tea.Model {
+func InitialModel(user string, conn *connector.Connector) tea.Model {
 	m := Model{}
 	for i := 0; i < 3; i++ {
 		for j := 0; j < 3; j++ {
 			m.Game.Board[i][j] = " "
 		}
 	}
-	m.gameClient = game.NewGameClient(c)
+	m.gameClient = client.NewGameClient(conn, user)
 
-	m.User = User
+	m.User = user
 	m.Page = MENUPAGE
 	m.Game.CurrentPlayer = "X"
 	m.Opponent = "Waiting ... "
@@ -68,6 +78,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		msgString := msg.String()
 		if msgString == "q" || msgString == "ctrl+c" {
+			m.quit = true
 			return m, tea.Quit
 		}
 		if msgString == "m" || msgString == "esc" {
@@ -84,6 +95,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Page = JOINPAGE
 				return m, m.gameClient.List("list")
 			}
+		} else if m.Page == ACCEPTPAGE {
+            switch msgString {
+            case "up", "k":
+                if m.acceptPage.cursor < len(m.acceptPage.answer)-1 {
+                    m.acceptPage.cursor += 1
+                }
+            case "down", "j":
+                if m.acceptPage.cursor > 0 {
+                    m.acceptPage.cursor -= 1
+                }
+            case "enter":
+                if m.acceptPage.cursor == 0 {
+                    return m, m.gameClient.AcceptRequest(true, "accepted")
+                } else {
+                    return m, m.gameClient.AcceptRequest(false, "rejected")
+                }
+            }
 		} else if m.Page == JOINPAGE {
 			switch msgString {
 			case "up", "k":
@@ -124,7 +152,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				//TODO: add restart feat
 			}
 		}
-	case game.DoneMsg:
+	case client.DoneMsg:
 		switch msg.Msg {
 		case "list":
 			m.Page = JOINPAGE
@@ -134,37 +162,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.OpponentStatus = "Waiting ..."
 			return m, m.gameClient.ListenServer()
 		case "accepted":
-			m.Page = GAMEPAGE
-			m.OpponentStatus = "Connected"
-			turn := msg.Data.(string)
-			if turn == "first" {
-				m.Game.Player = "X"
-			} else {
-				m.Game.Player = "O"
-                return m, m.gameClient.ListenServer()
-			}
-		case "move":
-			m.Game.Board[m.Game.Cursor[0]][m.Game.Cursor[1]] = m.Game.Player
-			if m.Game.CurrentPlayer == "X" {
-				m.Game.CurrentPlayer = "O"
-			} else {
-				m.Game.CurrentPlayer = "X"
-			}
-			return m, m.gameClient.ListenServer()
-		case "error":
-			m.ErrorPage.errorMsg = msg.Data.(string)
-			m.Page = ERRORPAGE
-			return m, doTick("errortimeup")
-        case "errortimeup":
-            m.ErrorPage.errorMsg = ""
-            m.Page = MENUPAGE
-		}
-
-	case game.GameClientMsg:
-		switch msg.Msg {
-		case "join":
-			turn := msg.Data.(map[string]string)["turn"]
+            m.Page = GAMEPAGE
+            turn := msg.Data.(map[string]string)["turn"]
 			opponentname := msg.Data.(map[string]string)["opponent"]
+
 			m.OpponentStatus = "Connected"
 			m.Opponent = opponentname
 			if turn == "first" {
@@ -173,19 +174,54 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Game.Player = "O"
 				return m, m.gameClient.ListenServer()
 			}
+        case "rejected":
+            m.Page = GAMEPAGE 
+            return m, m.gameClient.ListenServer()
 		case "move":
+			m.Game.Board[m.Game.Cursor[0]][m.Game.Cursor[1]] = m.Game.Player
+			if m.Game.CurrentPlayer == "X" {
+				m.Game.CurrentPlayer = "O"
+			} else {
+				m.Game.CurrentPlayer = "X"
+			}
+			return m, m.gameClient.ListenServer()
+		case "errortimeup":
+			m.ErrorPage.errorMsg = ""
+			m.Page = MENUPAGE
+		}
+
+	case client.GameClientMsg:
+		switch msg.Msg {
+		case client.JOINREQMSG:
+            m.Page = ACCEPTPAGE
+            Opponent := msg.Data.(map[string]interface{})["opponent"].(string)
+            m.acceptPage.question = "Accept request from " + Opponent + " ?"
+            m.acceptPage.answer = []string{"Yes", "No"}
+            m.acceptPage.cursor = 0
+		case client.ERRORMSG:
+			m.ErrorPage.errorMsg = msg.Data.(string)
+			m.Page = ERRORPAGE
+			return m, doTick("errortimeup")
+		}
+	case client.GameClientOpponentMsg:
+		switch msg.Msg {
+		case client.DISCONNECTEDMSG:
+			m.ErrorPage.errorMsg = "Opponent Disconnected"
+			return m, doTick("errortimeup")
+		case client.MOVEMSG:
 			move := msg.Data.([2]int)
 			m.Game.Board[move[0]][move[1]] = m.Game.CurrentPlayer
 			m.Game.CurrentPlayer = m.Game.Player
-		case "":
-			//exit
-			break
 		}
 	}
 	return m, nil
 }
 
 func (m Model) View() string {
+	if m.quit {
+		return "Chessssh ...bye"
+	}
+
 	s := "\n\n\t\tTic Tac Toe"
 	switch m.Page {
 	// Page 1 will contain Start screen
@@ -247,22 +283,25 @@ func (m Model) View() string {
 		s += "\t\tLoading ..."
 		s += "\n\n\n\n"
 		s += "\t\tQ Quit\n"
-        return s
+		return s
 
 	case ERRORPAGE:
-		s += "\n\n\n\n"
+		s += "\n\n\t\t : ERROR : \n\n"
 		s += "\t\t" + m.ErrorPage.errorMsg
 		s += "\n\n\n\n"
 		s += "\t\tQ Quit\n"
-        return s
+		return s
+    case ACCEPTPAGE:
+        s += "\n\n\t\t : ACCEPTED : \n\n"
+
 	}
 
-    return s
+	return s
 }
 
 func doTick(doneMsg string) tea.Cmd {
-	return tea.Tick(time.Millisecond*10, func(t time.Time) tea.Msg {
-		return game.DoneMsg{
+	return tea.Tick(time.Second*5, func(t time.Time) tea.Msg {
+		return client.DoneMsg{
 			Msg:  doneMsg,
 			Data: nil,
 		}
