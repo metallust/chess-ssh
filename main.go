@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/metallust/chessh/pkg/tictactoe"
-	"github.com/metallust/sshGameClient/server"
+	"github.com/metallust/chessssh/pkg/tictactoe"
+	"github.com/metallust/dosssh/server"
 )
 
 func main() {

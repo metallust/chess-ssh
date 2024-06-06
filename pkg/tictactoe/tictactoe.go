@@ -4,8 +4,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/metallust/sshGameClient/client"
-	"github.com/metallust/sshGameClient/connector"
+	"github.com/metallust/dosssh/client"
+	"github.com/metallust/dosssh/connector"
 )
 
 type Model struct {
@@ -17,7 +17,7 @@ type Model struct {
 	Game           Tictactoe
 	gameClient     *client.GameClient
 	ErrorPage      errorPage
-    acceptPage     acceptPage
+	acceptPage     acceptPage
 	quit           bool
 }
 
@@ -31,11 +31,10 @@ type errorPage struct {
 }
 
 type acceptPage struct {
-    question string
-    answer []string
-    cursor int
+	question string
+	answer   []string
+	cursor   int
 }
-
 
 type Tictactoe struct {
 	Board         [3][3]string
@@ -50,7 +49,7 @@ const (
 	GAMEPAGE
 	LOADINGPAGE
 	ERRORPAGE
-    ACCEPTPAGE
+	ACCEPTPAGE
 )
 
 func InitialModel(user string, conn *connector.Connector) tea.Model {
@@ -96,22 +95,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.gameClient.List("list")
 			}
 		} else if m.Page == ACCEPTPAGE {
-            switch msgString {
-            case "up", "k":
-                if m.acceptPage.cursor < len(m.acceptPage.answer)-1 {
-                    m.acceptPage.cursor += 1
-                }
-            case "down", "j":
-                if m.acceptPage.cursor > 0 {
-                    m.acceptPage.cursor -= 1
-                }
-            case "enter":
-                if m.acceptPage.cursor == 0 {
-                    return m, m.gameClient.AcceptRequest(true, "accepted")
-                } else {
-                    return m, m.gameClient.AcceptRequest(false, "rejected")
-                }
-            }
+			switch msgString {
+			case "up", "k":
+				if m.acceptPage.cursor < len(m.acceptPage.answer)-1 {
+					m.acceptPage.cursor += 1
+				}
+			case "down", "j":
+				if m.acceptPage.cursor > 0 {
+					m.acceptPage.cursor -= 1
+				}
+			case "enter":
+				if m.acceptPage.cursor == 0 {
+					return m, m.gameClient.AcceptRequest(true, "accepted")
+				} else {
+					return m, m.gameClient.AcceptRequest(false, "rejected")
+				}
+			}
 		} else if m.Page == JOINPAGE {
 			switch msgString {
 			case "up", "k":
@@ -130,7 +129,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Page = GAMEPAGE
 				m.Opponent = opponent
 				m.OpponentStatus = "Requesting ..."
-				return m, m.gameClient.Join(opponent, "accepted")
+				return m, m.gameClient.Join(opponent, "joined")
 			}
 		} else if m.Page == GAMEPAGE {
 			switch msgString {
@@ -161,22 +160,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Page = GAMEPAGE
 			m.OpponentStatus = "Waiting ..."
 			return m, m.gameClient.ListenServer()
-		case "accepted":
+        case "joined":
             m.Page = GAMEPAGE
-            turn := msg.Data.(map[string]string)["turn"]
-			opponentname := msg.Data.(map[string]string)["opponent"]
-
+		    data := msg.Data.([]string)
 			m.OpponentStatus = "Connected"
-			m.Opponent = opponentname
-			if turn == "first" {
+			m.Opponent = data[0]
+			if data[1] == "first" {
 				m.Game.Player = "X"
 			} else {
 				m.Game.Player = "O"
 				return m, m.gameClient.ListenServer()
 			}
-        case "rejected":
-            m.Page = GAMEPAGE 
-            return m, m.gameClient.ListenServer()
+ 
+		case "accepted":
+            data := msg.Data.([]string)
+			m.OpponentStatus = "Connected"
+			m.Opponent = data[0]
+			if data[1] == "first" {
+				m.Game.Player = "X"
+			} else {
+				m.Game.Player = "O"
+				return m, m.gameClient.ListenServer()
+			}
+		case "rejected":
+			m.Page = GAMEPAGE
+			return m, m.gameClient.ListenServer()
 		case "move":
 			m.Game.Board[m.Game.Cursor[0]][m.Game.Cursor[1]] = m.Game.Player
 			if m.Game.CurrentPlayer == "X" {
@@ -193,11 +201,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case client.GameClientMsg:
 		switch msg.Msg {
 		case client.JOINREQMSG:
-            m.Page = ACCEPTPAGE
-            Opponent := msg.Data.(map[string]interface{})["opponent"].(string)
-            m.acceptPage.question = "Accept request from " + Opponent + " ?"
-            m.acceptPage.answer = []string{"Yes", "No"}
-            m.acceptPage.cursor = 0
+			m.Page = ACCEPTPAGE
+			// Opponent := msg.Data.(string)
+			Opponent := msg.Data.(string)
+			m.acceptPage.question = "Accept request from " + Opponent + " ?"
+			m.acceptPage.answer = []string{"Yes", "No"}
+			m.acceptPage.cursor = 0
 		case client.ERRORMSG:
 			m.ErrorPage.errorMsg = msg.Data.(string)
 			m.Page = ERRORPAGE
@@ -291,9 +300,18 @@ func (m Model) View() string {
 		s += "\n\n\n\n"
 		s += "\t\tQ Quit\n"
 		return s
-    case ACCEPTPAGE:
-        s += "\n\n\t\t : ACCEPTED : \n\n"
-
+	case ACCEPTPAGE:
+		s += "\n\n\t\t : ACCEPTED : \n\n"
+		s += "\t\t" + m.acceptPage.question + "\n\n"
+		for i, ans := range m.acceptPage.answer {
+            if i == m.acceptPage.cursor {
+                s += "\t\t>"
+            }else {
+                s += "\t\t "
+            }
+            s += ans + "\n"
+		}
+        return s
 	}
 
 	return s
