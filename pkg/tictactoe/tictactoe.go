@@ -18,29 +18,6 @@ type Model struct {
 	gameClient     *client.GameClient
 	ErrorPage      errorPage
 	acceptPage     acceptPage
-	quit           bool
-}
-
-type joinPage struct {
-	Cursor       int
-	AvaibleGames []string
-}
-
-type errorPage struct {
-	errorMsg string
-}
-
-type acceptPage struct {
-	question string
-	answer   []string
-	cursor   int
-}
-
-type Tictactoe struct {
-	Board         [3][3]string
-	Cursor        [2]int
-	Player        string
-	CurrentPlayer string
 }
 
 const (
@@ -77,7 +54,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		msgString := msg.String()
 		if msgString == "q" || msgString == "ctrl+c" {
-			m.quit = true
 			return m, tea.Quit
 		}
 		if msgString == "m" || msgString == "esc" {
@@ -97,13 +73,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.Page == ACCEPTPAGE {
 			switch msgString {
 			case "up", "k":
-				if m.acceptPage.cursor < len(m.acceptPage.answer)-1 {
-					m.acceptPage.cursor += 1
-				}
+                m.acceptPage.moveCursor(-1)
 			case "down", "j":
-				if m.acceptPage.cursor > 0 {
-					m.acceptPage.cursor -= 1
-				}
+                m.acceptPage.moveCursor(1)
 			case "enter":
 				if m.acceptPage.cursor == 0 {
 					return m, m.gameClient.AcceptRequest(true, "joined")
@@ -114,13 +86,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.Page == JOINPAGE {
 			switch msgString {
 			case "up", "k":
-				if m.JoinPage.Cursor < len(m.JoinPage.AvaibleGames)-1 {
-					m.JoinPage.Cursor += 1
-				}
+                m.acceptPage.moveCursor(-1)
 			case "down", "j":
-				if m.JoinPage.Cursor > 0 {
-					m.JoinPage.Cursor -= 1
-				}
+				m.acceptPage.moveCursor(1)
 			case "enter":
 				if len(m.JoinPage.AvaibleGames) == 0 {
 					return m, nil
@@ -167,9 +135,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Opponent = data[0]
 			if data[1] == "first" {
 				m.Game.Player = "X"
+                return m, m.gameClient.ListenServer()
 			} else {
 				m.Game.Player = "O"
-				return m, m.gameClient.ListenOpponent()
+				return m, tea.Batch(m.gameClient.ListenOpponent(), m.gameClient.ListenServer())
 			}
  		case "rejected":
 			m.Page = GAMEPAGE
@@ -196,30 +165,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.acceptPage.question = "Accept request from " + Opponent + " ?"
 			m.acceptPage.answer = []string{"Yes", "No"}
 			m.acceptPage.cursor = 0
+            return m, m.gameClient.ListenServer()
 		case client.ERRORMSG:
 			m.ErrorPage.errorMsg = msg.Data.(string)
 			m.Page = ERRORPAGE
-			return m, doTick("errortimeup")
+			return m, tea.Batch(doTick("errortimeup"), m.gameClient.ListenServer())
 		}
 	case client.GameClientOpponentMsg:
 		switch msg.Msg {
-		case client.DISCONNECTEDMSG:
-			m.ErrorPage.errorMsg = "Opponent Disconnected"
-			return m, doTick("errortimeup")
 		case client.MOVEMSG:
 			move := msg.Data.([2]int)
 			m.Game.Board[move[0]][move[1]] = m.Game.CurrentPlayer
 			m.Game.CurrentPlayer = m.Game.Player
+        case client.ERRORMSG:
+            //handle error
 		}
 	}
 	return m, nil
 }
 
 func (m Model) View() string {
-	if m.quit {
-		return "Chessssh ...bye"
-	}
-
 	s := "\n\n\t\tTic Tac Toe"
 	switch m.Page {
 	// Page 1 will contain Start screen
