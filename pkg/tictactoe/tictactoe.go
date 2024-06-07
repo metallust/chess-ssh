@@ -106,7 +106,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "enter":
 				if m.acceptPage.cursor == 0 {
-					return m, m.gameClient.AcceptRequest(true, "accepted")
+					return m, m.gameClient.AcceptRequest(true, "joined")
 				} else {
 					return m, m.gameClient.AcceptRequest(false, "rejected")
 				}
@@ -169,20 +169,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Game.Player = "X"
 			} else {
 				m.Game.Player = "O"
-				return m, m.gameClient.ListenServer()
+				return m, m.gameClient.ListenOpponent()
 			}
- 
-		case "accepted":
-            data := msg.Data.([]string)
-			m.OpponentStatus = "Connected"
-			m.Opponent = data[0]
-			if data[1] == "first" {
-				m.Game.Player = "X"
-			} else {
-				m.Game.Player = "O"
-				return m, m.gameClient.ListenServer()
-			}
-		case "rejected":
+ 		case "rejected":
 			m.Page = GAMEPAGE
 			return m, m.gameClient.ListenServer()
 		case "move":
@@ -192,7 +181,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.Game.CurrentPlayer = "X"
 			}
-			return m, m.gameClient.ListenServer()
+			return m, m.gameClient.ListenOpponent()
 		case "errortimeup":
 			m.ErrorPage.errorMsg = ""
 			m.Page = MENUPAGE
